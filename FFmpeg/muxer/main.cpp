@@ -21,12 +21,16 @@ extern "C" {
 //         pkt->stream_index);
 // }
 
+#include <map>
+
+std::map<int, int> index_map;
+
 int main(int argc, char **argv)
 {
     AVOutputFormat *ofmt = NULL;
     AVFormatContext *ifmt_ctx = NULL, *ofmt_ctx = NULL;
     AVPacket pkt;
-    CodecParam codec_param = { 0 };
+    CodecParam codec_param;
     PLUHandler handler = NULL;
     const char *in_filename, *out_filename;
     int ret, i;
@@ -47,33 +51,49 @@ int main(int argc, char **argv)
     }
 
     av_dump_format(ifmt_ctx, 0, in_filename, 0);
+    snprintf(codec_param.file_name, sizeof(codec_param.file_name), out_filename);
 
-    codec_param.file_name = out_filename;
-
+    int nb_streams = 0;
+    for (int i = 0; i<ifmt_ctx->nb_streams;i++ )
+    {
+        AVStream *in_stream = ifmt_ctx->streams[i];
+        if (in_stream->codec->codec_type == AVMEDIA_TYPE_VIDEO || in_stream->codec->codec_type == AVMEDIA_TYPE_AUDIO)
+            nb_streams++;
+    }
+    codec_param.nb_streams = nb_streams;
+    codec_param.codec_info = new SCodecInfo[nb_streams];
+    static int audio_video_index = 0;
     for (i = 0; i < ifmt_ctx->nb_streams; i++) {
         AVStream *in_stream = ifmt_ctx->streams[i];
         AVCodecContext *codec_ctx = in_stream->codec;
         const AVCodec *codec = codec_ctx->codec;
+        SCodecInfo *codec_info = &codec_param.codec_info[audio_video_index];
+
         if (codec_ctx->codec_type == AVMEDIA_TYPE_VIDEO) {
-            codec_param.has_video = 1;
-            codec_param.height = codec_ctx->height;
-            codec_param.width = codec_ctx->width;
-            codec_param.v_bitrate = codec_ctx->bit_rate;
-            codec_param.fps_num = codec_ctx->framerate.num;
-            codec_param.fps_den = codec_ctx->framerate.den;
-            codec_param.v_codec_name = "libx264";//codec_ctx->codec->name;
-            codec_param.v_extradata_size = codec_ctx->extradata_size;
-            codec_param.v_extradata = codec_ctx->extradata;
+            codec_info->media_type = PACKET_VIDEO;
+            codec_info->media_info.video.height = codec_ctx->height;
+            codec_info->media_info.video.width = codec_ctx->width;
+            codec_info->media_info.video.v_bitrate = codec_ctx->bit_rate;
+            codec_info->media_info.video.fps_num = codec_ctx->framerate.num;
+            codec_info->media_info.video.fps_den = codec_ctx->framerate.den;
+            codec_info->media_info.video.v_codec_name = "libx264";//codec_ctx->codec->name;
+            codec_info->media_info.video.v_extradata_size = codec_ctx->extradata_size;
+            codec_info->media_info.video.v_extradata = codec_ctx->extradata;
         }
-        if (codec_ctx->codec_type == AVMEDIA_TYPE_AUDIO) {
-            codec_param.has_audio = 1;
-            codec_param.a_bitrate = codec_ctx->bit_rate;
-            codec_param.samplerate = codec_ctx->sample_rate;
-            codec_param.audio_channel - codec_ctx->channels;
-            codec_param.a_codec_name = "aac";// codec_ctx->codec->name;
-            codec_param.a_extradata_size = codec_ctx->extradata_size;
-            codec_param.a_extradata = codec_ctx->extradata;
+        else if (codec_ctx->codec_type == AVMEDIA_TYPE_AUDIO) {
+            codec_info->media_type = PACKET_AUDIO;
+            codec_info->media_info.audio.a_bitrate = codec_ctx->bit_rate;
+            codec_info->media_info.audio.samplerate = codec_ctx->sample_rate;
+            codec_info->media_info.audio.audio_channel = codec_ctx->channels;
+            codec_info->media_info.audio.a_codec_name = "aac";// codec_ctx->codec->name;
+            codec_info->media_info.audio.a_extradata_size = codec_ctx->extradata_size;
+            codec_info->media_info.audio.a_extradata = codec_ctx->extradata;
         }
+        else
+        {
+            continue;
+        }
+        index_map.insert(std::make_pair(i, audio_video_index++));
     }
 
     handler = plumux_initparam(&codec_param);
@@ -88,30 +108,31 @@ int main(int argc, char **argv)
 
         in_stream = ifmt_ctx->streams[pkt.stream_index];
 
-        //log_packet(ifmt_ctx, &pkt, "in");
-
         /* copy packet */
         if (in_stream->codec->codec_type == AVMEDIA_TYPE_VIDEO) {
+            SCodecInfo codec_info = codec_param.codec_info[index_map.at(pkt.stream_index)];
             packet_info.type = PACKET_VIDEO;
-            time_base_pkt = { codec_param.fps_den, codec_param.fps_num };
+            packet_info.keyframe = pkt.flags == AV_PKT_FLAG_KEY ? true : false;
+            time_base_pkt = { codec_info.media_info.video.fps_den, codec_info.media_info.video.fps_num };
         }
         else if (in_stream->codec->codec_type == AVMEDIA_TYPE_AUDIO) {
+            SCodecInfo codec_info = codec_param.codec_info[index_map.at(pkt.stream_index)];
             packet_info.type = PACKET_AUDIO;
-            time_base_pkt = { 1, codec_param.samplerate };
+            time_base_pkt = { 1, codec_info.media_info.audio.samplerate };
         }
         else {
             continue;
         }
         pkt.pos = -1;
-        //log_packet(ofmt_ctx, &pkt, "out");
+        packet_info.stream_index = index_map.at(pkt.stream_index);
         packet_info.buffer = pkt.data;
         packet_info.buffer_size = pkt.size;
-        packet_info.pts = av_rescale_q_rnd(pkt.pts, in_stream->time_base, time_base_pkt, (enum AVRounding)(AV_ROUND_NEAR_INF | AV_ROUND_PASS_MINMAX));
-        packet_info.dts = av_rescale_q_rnd(pkt.dts, in_stream->time_base, time_base_pkt, (enum AVRounding)(AV_ROUND_NEAR_INF | AV_ROUND_PASS_MINMAX));
-        //packet_info.index = pkt.stream_index;
+        packet_info.pts = av_rescale_q_rnd(pkt.pts, in_stream->time_base, 
+            time_base_pkt, (enum AVRounding)(AV_ROUND_NEAR_INF | AV_ROUND_PASS_MINMAX));
+        packet_info.dts = av_rescale_q_rnd(pkt.dts, in_stream->time_base, 
+            time_base_pkt, (enum AVRounding)(AV_ROUND_NEAR_INF | AV_ROUND_PASS_MINMAX));
         packet_info.base_num = time_base_pkt.num;
         packet_info.base_den = time_base_pkt.den;
-
         ret = plumux_write_packet(handler, &packet_info);
 
         av_packet_unref(&pkt);

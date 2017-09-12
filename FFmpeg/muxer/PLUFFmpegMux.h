@@ -15,33 +15,55 @@ typedef struct plu_packet_info {
     void*       buffer;
     int         buffer_size;
     bool        keyframe;
+    int         stream_index;
     enum plu_packet_type type;
 }plu_packet_info;
 
+
+typedef union UMediaInfo {
+    struct SVideoParam {
+        int width;
+        int height;
+        int v_bitrate;
+        const char *v_codec_name;
+        int fps_num;
+        int fps_den;
+        void *v_extradata;
+        int v_extradata_size;
+        int stream_index;
+
+    }video;
+
+    struct SAudioParam {
+        int a_bitrate;
+        int samplerate;
+        int audio_channel;
+        const char *a_codec_name;
+        void *a_extradata;
+        int a_extradata_size;
+        int stream_index;
+
+    }audio;
+}UMediaInfo;
+
+typedef struct SCodecInfo {
+    enum plu_packet_type    media_type;
+    UMediaInfo              media_info;
+}SCodecInfo;
+
+
 typedef struct  CodecParam
 {
-    const char *file_name;
-    char *muxer_settings;
-
-    //video parameter
-    int has_video;
-    int width;
-    int height;
-    int v_bitrate;
-    const char *v_codec_name;
-    int fps_num;
-    int fps_den;
-    void *v_extradata;
-    int v_extradata_size;
-
-    //audio parameter
-    int has_audio;
-    int a_bitrate;
-    int samplerate;
-    int audio_channel;
-    const char *a_codec_name;
-    void *a_extradata;
-    int a_extradata_size;
+    CodecParam():codec_info(NULL),
+        file_name{ 0 }, muxer_settings{0}
+    {
+        nb_streams = 0;
+    }
+    char file_name[1024];
+    char muxer_settings[1024];
+    
+    SCodecInfo  *codec_info;
+    int         nb_streams;
 }CodecParam;
 
 typedef void* PLUHandler;
