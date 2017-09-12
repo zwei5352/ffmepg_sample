@@ -1,47 +1,53 @@
-/*
- * Copyright (c) 2015 Hugh Bailey <obs.jim@gmail.com>
- *
- * Permission to use, copy, modify, and distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
- *
- * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
- * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
- * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
- * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
- * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
- * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
- */
-
 #ifndef PLUFFMPEGMUX_H_
 #define PLUFFMPEGMUX_H_
 
-typedef struct  
+#include <stdint.h>
+enum plu_packet_type {
+    PACKET_VIDEO,
+    PACKET_AUDIO
+};
+
+typedef struct plu_packet_info {
+    int         base_num;
+    int         base_den;
+    int64_t     pts;
+    int64_t     dts;
+    void*       buffer;
+    int         buffer_size;
+    bool        keyframe;
+    enum plu_packet_type type;
+}plu_packet_info;
+
+typedef struct  CodecParam
 {
+    const char *file_name;
+    char *muxer_settings;
 
-} SCodecParameters;
+    //video parameter
+    int has_video;
+    int width;
+    int height;
+    int v_bitrate;
+    const char *v_codec_name;
+    int fps_num;
+    int fps_den;
+    void *v_extradata;
+    int v_extradata_size;
 
-enum ffm_packet_type {
-	FFM_PACKET_VIDEO,
-	FFM_PACKET_AUDIO
-};
+    //audio parameter
+    int has_audio;
+    int a_bitrate;
+    int samplerate;
+    int audio_channel;
+    const char *a_codec_name;
+    void *a_extradata;
+    int a_extradata_size;
+}CodecParam;
 
-#define FFM_SUCCESS      0
-#define FFM_ERROR       -1
-#define FFM_UNSUPPORTED -2
+typedef void* PLUHandler;
 
-struct ffm_packet_info {
-	int64_t              pts;
-	int64_t              dts;
-	uint32_t             size;
-	uint32_t             index;
-	enum ffm_packet_type type;
-	bool                 keyframe;
-};
-
-size_t safe_read(void *vdata, size_t size);
-
-
+PLUHandler plumux_initparam(const CodecParam *param);
+int plumux_write_packet(PLUHandler pHandler, const plu_packet_info *packet);
+int plumux_write_trailer(PLUHandler pHandler);
 
 #endif // if

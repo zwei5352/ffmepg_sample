@@ -15,12 +15,15 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="ffmpeg-mux.h">
+    <ClInclude Include="PLUFFmpegMux.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="ffmpeg-mux.c">
+    <ClCompile Include="main.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="PLUFFmpegMux.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>
